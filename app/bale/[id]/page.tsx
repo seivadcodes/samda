@@ -1,14 +1,17 @@
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
-import Image from 'next/image';
 import Link from 'next/link';
+import AddReviewForm from '@/components/AddReviewForm';
+import AdminReviewForm from '@/components/AdminReviewForm';
+import BaleGallery from '@/components/BaleGallery';
 
-type Params = Promise<{ id: string }>;
+type PageProps = {
+  params: Promise<{ id: string }>;
+};
 
 async function getBale(id: number) {
   const supabase = createClient();
 
-  // Fetch bale with seller info
   const { data: bale, error } = await supabase
     .from('bales')
     .select(
@@ -29,14 +32,12 @@ async function getBale(id: number) {
 
   if (error || !bale) return null;
 
-  // Fetch reviews for this bale
-  const { data: reviews, error: reviewsError } = await supabase
+  const { data: reviews } = await supabase
     .from('reviews')
     .select('id, reviewer_name, review_text, rating, created_at')
     .eq('bale_id', id)
     .order('created_at', { ascending: false });
 
-  // Calculate average rating
   let avgRating = 0;
   if (reviews && reviews.length > 0) {
     const sum = reviews.reduce((acc, r) => acc + r.rating, 0);
@@ -46,7 +47,7 @@ async function getBale(id: number) {
   return { bale, reviews: reviews || [], avgRating };
 }
 
-export default async function BalePage({ params }: { params: Params }) {
+export default async function BalePage({ params }: PageProps) {
   const { id } = await params;
   const baleId = parseInt(id);
   if (isNaN(baleId)) notFound();
@@ -114,8 +115,11 @@ export default async function BalePage({ params }: { params: Params }) {
           height: 80px;
           object-fit: cover;
           border-radius: 8px;
-          border: 1px solid #e2e8f0;
+          transition: all 0.2s ease;
           cursor: pointer;
+        }
+        .thumbnails img:hover {
+          transform: scale(1.05);
         }
         .bale-info {
           padding: 1.5rem;
@@ -197,6 +201,7 @@ export default async function BalePage({ params }: { params: Params }) {
           display: flex;
           gap: 1rem;
           margin: 1.5rem 0;
+          flex-wrap: wrap;
         }
         .order-btn {
           flex: 1;
@@ -209,6 +214,10 @@ export default async function BalePage({ params }: { params: Params }) {
           align-items: center;
           justify-content: center;
           gap: 8px;
+          transition: opacity 0.2s;
+        }
+        .order-btn:hover {
+          opacity: 0.9;
         }
         .btn-whatsapp {
           background: #25D366;
@@ -258,6 +267,19 @@ export default async function BalePage({ params }: { params: Params }) {
           color: #475569;
           line-height: 1.5;
         }
+        /* Form styles */
+        .add-review-form, .admin-auth-form, .admin-review-form {
+          margin-top: 2rem;
+          padding: 1rem;
+          border-radius: 16px;
+        }
+        .add-review-form {
+          background: #f9fafb;
+        }
+        .admin-auth-form, .admin-review-form {
+          background: #fffbeb;
+          border: 1px solid #fde68a;
+        }
         @media (max-width: 768px) {
           .bale-detail {
             grid-template-columns: 1fr;
@@ -269,28 +291,11 @@ export default async function BalePage({ params }: { params: Params }) {
 
       <div className="bale-detail">
         {/* Left: Gallery */}
-        <div className="bale-gallery">
-          <div className="main-image">
-            {bale.main_image_url ? (
-              <img src={bale.main_image_url} alt={bale.bale_name} />
-            ) : (
-              <div className="no-image" style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>No image available</div>
-            )}
-          </div>
-          {bale.secondary_images && bale.secondary_images.length > 0 && (
-            <div className="thumbnails">
-              {bale.secondary_images.map((url: string, idx: number) => (
-                <img
-                  key={idx}
-                  src={url}
-                  alt={`Sample ${idx + 1}`}
-                  onClick={() => window.open(url, '_blank')}
-                  style={{ cursor: 'pointer' }}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+        <BaleGallery 
+          mainImage={bale.main_image_url} 
+          secondaryImages={bale.secondary_images} 
+          baleName={bale.bale_name}
+        />
 
         {/* Right: Info */}
         <div className="bale-info">
@@ -388,6 +393,12 @@ export default async function BalePage({ params }: { params: Params }) {
           ))}
         </div>
       )}
+
+      {/* Public Review Form */}
+      <AddReviewForm baleId={bale.id} />
+
+      {/* Admin Review Form (only accessible with correct credentials) */}
+      <AdminReviewForm baleId={bale.id} />
     </div>
   );
 }

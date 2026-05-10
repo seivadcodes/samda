@@ -30,7 +30,7 @@ export default async function CheckoutPage({
       <div style={{ background: '#f0fdf4', padding: '1rem', borderRadius: '12px', margin: '1rem 0' }}>
         <h3>M-Pesa Payment Instructions</h3>
         <p><strong>Paybill:</strong> 625625</p>
-        <p><strong>Account Number:</strong> 2546820</p>
+        <p><strong>Account Number:</strong> 01201254723500</p>
         <p><small>Enter your phone number as the account number.</small></p>
       </div>
       <a href="/" style={{ display: 'inline-block', marginTop: '1rem', color: '#4f46e5' }}>← Back to Home</a>
