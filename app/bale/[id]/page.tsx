@@ -1,61 +1,155 @@
-import { notFound } from 'next/navigation';
-import { createClient } from '@/lib/supabase';
+'use client';
+
+import { useState, useEffect } from 'react';
+import { notFound, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useAuth } from '@/hooks/useAuth';
+import { createClient } from '@/lib/supabase';
 import AddReviewForm from '@/components/AddReviewForm';
 import AdminReviewForm from '@/components/AdminReviewForm';
 import BaleGallery from '@/components/BaleGallery';
+import { Loader2 } from 'lucide-react';
+
+// 🔑 ADMIN CONFIGURATION
+const ADMIN_EMAILS = [
+  'fahamu@gmail.com',
+];
+
+type Review = {
+  id: number;
+  reviewer_name: string | null;
+  review_text: string;
+  rating: number;
+  created_at: string;
+};
+
+type BaleSeller = {
+  id: string;
+  display_name: string;
+  supplier_type: string | null;
+  profile_pic_url: string | null;
+};
+
+type BaleData = {
+  id: number;
+  bale_name: string;
+  main_image_url: string | null;
+  secondary_images: string[] | null;
+  condition: string | null;
+  origin: string | null;
+  weight_kg: number | null;
+  pieces: number | null;
+  mix_type: string | null;
+  price: number;
+  description: string | null;
+  seller: BaleSeller;
+};
 
 type PageProps = {
   params: Promise<{ id: string }>;
 };
 
-async function getBale(id: number) {
-  const supabase = createClient();
+export default function BalePage({ params }: PageProps) {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
+  const [bale, setBale] = useState<BaleData | null>(null);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [avgRating, setAvgRating] = useState(0);
+  const [loading, setLoading] = useState(true);
 
-  const { data: bale, error } = await supabase
-    .from('bales')
-    .select(
-      `
-      *,
-      seller:users!seller_id (
-        id,
-        display_name,
-        phone,
-        business_name,
-        supplier_type,
-        profile_pic_url
-      )
-    `
-    )
-    .eq('id', id)
-    .single();
+  // Check admin status - EXACTLY LIKE TREND PAGE
+  const isAdmin = user?.email ? ADMIN_EMAILS.includes(user.email) : false;
 
-  if (error || !bale) return null;
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const { id } = await params;
+        const baleId = parseInt(id);
+        
+        if (isNaN(baleId)) {
+          notFound();
+          return;
+        }
 
-  const { data: reviews } = await supabase
-    .from('reviews')
-    .select('id, reviewer_name, review_text, rating, created_at')
-    .eq('bale_id', id)
-    .order('created_at', { ascending: false });
+        const supabase = createClient();
 
-  let avgRating = 0;
-  if (reviews && reviews.length > 0) {
-    const sum = reviews.reduce((acc, r) => acc + r.rating, 0);
-    avgRating = sum / reviews.length;
+        // Fetch bale data
+        const { data: baleData, error: baleError } = await supabase
+          .from('bales')
+          .select(`
+            *,
+            seller:users!seller_id (
+              id,
+              display_name,
+              supplier_type,
+              profile_pic_url
+            )
+          `)
+          .eq('id', baleId)
+          .single<BaleData>();
+
+        if (baleError || !baleData) {
+          notFound();
+          return;
+        }
+
+        setBale(baleData);
+
+        // Fetch ALL reviews for this seller across ALL their bales
+        // Step 1: Get all bale IDs from this seller
+        const { data: sellerBales } = await supabase
+          .from('bales')
+          .select('id')
+          .eq('seller_id', baleData.seller.id);
+
+        const baleIds = sellerBales?.map(b => b.id) || [baleId];
+
+        // Step 2: Get all reviews for those bales
+        const { data: reviewsData } = await supabase
+          .from('reviews')
+          .select(`
+            id, 
+            reviewer_name, 
+            review_text, 
+            rating, 
+            created_at,
+            bale_id
+          `)
+          .in('bale_id', baleIds)
+          .order('created_at', { ascending: false })
+          .returns<Review[]>();
+
+        const reviewsList = reviewsData || [];
+        setReviews(reviewsList);
+
+        // Calculate average rating
+        if (reviewsList.length > 0) {
+          const sum = reviewsList.reduce((acc: number, r: Review) => acc + r.rating, 0);
+          setAvgRating(sum / reviewsList.length);
+        }
+
+      } catch (error) {
+        console.error('Error loading bale:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadData();
+  }, [params]);
+
+  if (authLoading || loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-12 h-12 animate-spin text-blue-600" />
+      </div>
+    );
   }
 
-  return { bale, reviews: reviews || [], avgRating };
-}
-
-export default async function BalePage({ params }: PageProps) {
-  const { id } = await params;
-  const baleId = parseInt(id);
-  if (isNaN(baleId)) notFound();
-
-  const data = await getBale(baleId);
-  if (!data) notFound();
-
-  const { bale, reviews, avgRating } = data;
+  if (!bale) {
+    notFound();
+    return null;
+  }
 
   return (
     <div className="bale-detail-container">
@@ -130,53 +224,6 @@ export default async function BalePage({ params }: PageProps) {
           color: #0f172a;
           margin-bottom: 0.5rem;
         }
-        .seller-info {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          margin: 1rem 0;
-          padding-bottom: 1rem;
-          border-bottom: 1px solid #eaeaea;
-        }
-        .seller-avatar {
-          width: 48px;
-          height: 48px;
-          border-radius: 50%;
-          object-fit: cover;
-          background: #f1f5f9;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-weight: bold;
-          font-size: 1.2rem;
-        }
-        .seller-name {
-          font-weight: 600;
-          font-size: 1.1rem;
-        }
-        .seller-badge {
-          display: inline-block;
-          font-size: 0.75rem;
-          font-weight: 700;
-          padding: 2px 8px;
-          border-radius: 20px;
-          margin-left: 8px;
-        }
-        .seller-badge.ds {
-          background: #dbeafe;
-          color: #1d4ed8;
-        }
-        .seller-badge.rs {
-          background: #ffedd5;
-          color: #c2410c;
-        }
-        .rating {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          margin-top: 0.25rem;
-          color: #f59e0b;
-        }
         .bale-meta {
           display: flex;
           flex-wrap: wrap;
@@ -245,6 +292,7 @@ export default async function BalePage({ params }: PageProps) {
           font-size: 1.5rem;
           font-weight: 700;
           margin-bottom: 1.5rem;
+          color: #ffffff; 
         }
         .review-card {
           background: #f8fafc;
@@ -259,6 +307,7 @@ export default async function BalePage({ params }: PageProps) {
         }
         .reviewer-name {
           font-weight: 600;
+          color: #1e293b;
         }
         .review-stars {
           color: #f59e0b;
@@ -267,8 +316,7 @@ export default async function BalePage({ params }: PageProps) {
           color: #475569;
           line-height: 1.5;
         }
-        /* Form styles */
-        .add-review-form, .admin-auth-form, .admin-review-form {
+        .add-review-form, .admin-review-form {
           margin-top: 2rem;
           padding: 1rem;
           border-radius: 16px;
@@ -276,7 +324,7 @@ export default async function BalePage({ params }: PageProps) {
         .add-review-form {
           background: #f9fafb;
         }
-        .admin-auth-form, .admin-review-form {
+        .admin-review-form {
           background: #fffbeb;
           border: 1px solid #fde68a;
         }
@@ -300,34 +348,6 @@ export default async function BalePage({ params }: PageProps) {
         {/* Right: Info */}
         <div className="bale-info">
           <h1 className="bale-name">{bale.bale_name}</h1>
-
-          <div className="seller-info">
-            {bale.seller.profile_pic_url ? (
-              <img src={bale.seller.profile_pic_url} alt="" className="seller-avatar" />
-            ) : (
-              <div className="seller-avatar">{bale.seller.display_name.charAt(0)}</div>
-            )}
-            <div>
-              <div className="seller-name">
-                {bale.seller.display_name}
-                {bale.seller.supplier_type && (
-                  <span className={`seller-badge ${bale.seller.supplier_type.toLowerCase()}`}>
-                    {bale.seller.supplier_type}
-                  </span>
-                )}
-              </div>
-              {reviews.length > 0 && (
-                <div className="rating">
-                  {'★'.repeat(Math.floor(avgRating))}
-                  {avgRating % 1 >= 0.5 && '½'}
-                  {'☆'.repeat(5 - Math.ceil(avgRating))}
-                  <span style={{ color: '#64748b', marginLeft: '4px' }}>
-                    ({reviews.length} review{reviews.length !== 1 ? 's' : ''})
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
 
           <div className="bale-meta">
             {bale.condition && <span className="meta-badge">📌 {bale.condition}</span>}
@@ -381,14 +401,14 @@ export default async function BalePage({ params }: PageProps) {
       {/* Reviews Section */}
       {reviews.length > 0 && (
         <div className="reviews-section">
-          <h2 className="reviews-title">Customer Reviews</h2>
-          {reviews.map((review) => (
+          <h2 className="reviews-title">Customer Reviews ({reviews.length})</h2>
+          {reviews.map((review: Review) => (
             <div key={review.id} className="review-card">
               <div className="review-header">
                 <span className="reviewer-name">{review.reviewer_name || 'Anonymous'}</span>
                 <span className="review-stars">{'★'.repeat(review.rating)}{'☆'.repeat(5 - review.rating)}</span>
               </div>
-              <div className="review-text">“{review.review_text}”</div>
+              <div className="review-text">"{review.review_text}"</div>
             </div>
           ))}
         </div>
@@ -397,8 +417,10 @@ export default async function BalePage({ params }: PageProps) {
       {/* Public Review Form */}
       <AddReviewForm baleId={bale.id} />
 
-      {/* Admin Review Form (only accessible with correct credentials) */}
-      <AdminReviewForm baleId={bale.id} />
+      {/* Admin Review Form - ONLY SHOW IF ADMIN (EXACTLY LIKE TREND PAGE) */}
+      {isAdmin && (
+        <AdminReviewForm baleId={bale.id} />
+      )}
     </div>
   );
 }
