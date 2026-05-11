@@ -648,7 +648,7 @@ export default async function HomePage({
             </div>
             <h1 className="hero-title">Premium Mitumba Bales Delivered Nationwide</h1>
             <p className="hero-subtitle">
-              Curated premium bales from Canada, UK, USA, China & more. Verified grades. Fast M-Pesa checkout. Trusted by 5,000+ Kenyan retailers.
+              Premium bales from Canada, UK, USA, China & more. Verified grades. Fast M-Pesa checkout. Trusted by 5,000+ Kenyan retailers.
             </p>
             <div className="hero-ctas">
               <a href="#featured" className="btn-primary">
@@ -711,7 +711,7 @@ export default async function HomePage({
       <section id="featured" className="section">
         <div className="container">
           <h2 className="section-title">
-            {category ? `✨ ${getCategoryLabel()}` : '✨ Curated Premium Mitumba Bales'}
+            {category ? `✨ ${getCategoryLabel()}` : '✨ Premium Mitumba Bales'}
           </h2>
           <p className="section-subtitle">
             {category 
